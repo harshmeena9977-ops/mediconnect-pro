@@ -138,3 +138,58 @@ def doctors_list_view(request):
         'count': doctors.count(),
         'doctors': serializer.data
     }, status=status.HTTP_200_OK)
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_doctor_profile(request):
+    """
+    Doctor apna profile update karta hai
+    specialty, fee, location, bio set karta hai
+    """
+    if request.user.role != 'DOCTOR':
+        return Response({
+            'error': 'Sirf Doctor apna profile update kar sakta hai!'
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        doctor_profile = request.user.doctor_profile
+    except Exception:
+        return Response({
+            'error': 'Doctor profile nahi mila!'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    # PATCH = sirf kuch fields update, PUT = sab fields
+    serializer = DoctorProfileSerializer(
+        doctor_profile,
+        data=request.data,
+        partial=request.method == 'PATCH'
+    )
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response({
+            'message': 'Profile successfully update ho gaya!',
+            'profile': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def doctor_detail(request, doctor_id):
+    """
+    Kisi bhi doctor ki detail dekho
+    Patient use karta hai doctor ka full profile dekhne ke liye
+    """
+    try:
+        doctor = DoctorProfile.objects.select_related('user').get(
+            id=doctor_id
+        )
+    except DoctorProfile.DoesNotExist:
+        return Response({
+            'error': 'Doctor nahi mila!'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = DoctorProfileSerializer(doctor)
+    return Response(serializer.data, status=status.HTTP_200_OK)
