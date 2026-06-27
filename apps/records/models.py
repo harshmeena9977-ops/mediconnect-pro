@@ -5,7 +5,9 @@ from apps.appointments.models import Appointment
 
 class MedicalRecord(models.Model):
     """
-    Patient ke medical records — prescriptions, reports, X-rays
+    Stores patient medical records including prescriptions,
+    lab reports, X-rays, and scan results.
+    Doctors can attach notes to records they review.
     """
     RECORD_TYPE_CHOICES = [
         ('PRESCRIPTION', 'Prescription'),
@@ -42,15 +44,11 @@ class MedicalRecord(models.Model):
     )
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-
-    # File upload
     file = models.FileField(
         upload_to='medical_records/%Y/%m/',
         null=True,
         blank=True
     )
-
-    # Doctor notes
     doctor_notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

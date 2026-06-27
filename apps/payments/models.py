@@ -5,8 +5,9 @@ from apps.appointments.models import Appointment
 
 class Payment(models.Model):
     """
-    Appointment ke liye payment track karta hai
-    Razorpay ke saath integrate hai
+    Tracks payment transactions for appointments.
+    Integrates with Razorpay payment gateway.
+    Each appointment can have only one associated payment.
     """
     STATUS_CHOICES = [
         ('CREATED', 'Created'),
@@ -26,20 +27,10 @@ class Payment(models.Model):
         related_name='payments'
     )
 
-    # Razorpay Fields
     razorpay_order_id = models.CharField(max_length=100, unique=True)
-    razorpay_payment_id = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True
-    )
-    razorpay_signature = models.CharField(
-        max_length=200,
-        null=True,
-        blank=True
-    )
+    razorpay_payment_id = models.CharField(max_length=100, null=True, blank=True)
+    razorpay_signature = models.CharField(max_length=200, null=True, blank=True)
 
-    # Payment Details
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default='INR')
     status = models.CharField(
@@ -56,4 +47,4 @@ class Payment(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.patient.full_name} | {self.amount} | {self.status}"
+        return f"{self.patient.full_name} | ₹{self.amount} | {self.status}"

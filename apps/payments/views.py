@@ -2,7 +2,6 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
 from django.db import transaction
 from apps.appointments.models import Appointment
 from .models import Payment
@@ -18,25 +17,21 @@ from .services import RazorpayService
 @permission_classes([IsAuthenticated])
 def create_payment_order(request):
     """
-    Step 1 — Razorpay order banao
-    Patient appointment book karne ke baad yeh call karta hai
+    Creates a Razorpay order for a pending appointment.
+    Called by the Patient after booking an appointment.
     """
     if request.user.role != 'PATIENT':
         return Response({
-            'error': 'Sirf Patient payment kar sakta hai!'
+            'error': 'Only Patients can initiate payments!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     serializer = PaymentCreateSerializer(data=request.data)
 
     if not serializer.is_valid():
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     appointment_id = serializer.validated_data['appointment_id']
 
-    # Appointment check karo
     try:
         appointment = Appointment.objects.get(
             id=appointment_id,
@@ -45,20 +40,17 @@ def create_payment_order(request):
         )
     except Appointment.DoesNotExist:
         return Response({
-            'error': 'Appointment nahi mili ya already paid hai!'
+            'error': 'Appointment not found or already paid!'
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # Already payment exist karta hai?
     if hasattr(appointment, 'payment'):
         return Response({
-            'error': 'Is appointment ka payment already create ho chuka hai!'
+            'error': 'A payment order already exists for this appointment!'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # Amount doctor ki fee se lo
     amount = appointment.doctor.consultation_fee
 
     try:
-        # Razorpay order banao
         razorpay_service = RazorpayService()
         order = razorpay_service.create_order(
             amount=float(amount),
@@ -69,7 +61,6 @@ def create_payment_order(request):
             }
         )
 
-        # Payment DB mein save karo
         payment = Payment.objects.create(
             appointment=appointment,
             patient=request.user,
@@ -78,7 +69,7 @@ def create_payment_order(request):
         )
 
         return Response({
-            'message': 'Payment order create ho gaya!',
+            'message': 'Payment order created successfully!',
             'order_id': order['id'],
             'amount': amount,
             'currency': 'INR',
@@ -88,7 +79,7 @@ def create_payment_order(request):
 
     except Exception as e:
         return Response({
-            'error': f'Payment order create nahi hua: {str(e)}'
+            'error': f'Failed to create payment order: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -96,29 +87,23 @@ def create_payment_order(request):
 @permission_classes([IsAuthenticated])
 def verify_payment(request):
     """
-    Step 2 — Payment verify karo
-    Razorpay frontend se yeh 3 values aati hain
-    Signature check karke appointment CONFIRMED karo
+    Verifies the Razorpay payment signature and confirms the appointment.
+    Uses select_for_update() to prevent concurrent verification issues.
     """
     serializer = PaymentVerifySerializer(data=request.data)
 
     if not serializer.is_valid():
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     data = serializer.validated_data
 
     try:
         with transaction.atomic():
-            # Payment dhundho
             payment = Payment.objects.select_for_update().get(
                 razorpay_order_id=data['razorpay_order_id'],
                 patient=request.user
             )
 
-            # Signature verify karo
             razorpay_service = RazorpayService()
             is_valid = razorpay_service.verify_payment(
                 data['razorpay_order_id'],
@@ -133,24 +118,23 @@ def verify_payment(request):
                     'error': 'Payment verification failed! Invalid signature.'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Payment successful — update karo
             payment.razorpay_payment_id = data['razorpay_payment_id']
             payment.razorpay_signature = data['razorpay_signature']
             payment.status = 'SUCCESS'
             payment.save()
 
-            # Appointment CONFIRMED karo
+            # Confirm the appointment after successful payment
             payment.appointment.status = 'CONFIRMED'
             payment.appointment.save()
 
             return Response({
-                'message': 'Payment successful! Appointment confirmed ho gayi!',
+                'message': 'Payment successful! Appointment confirmed.',
                 'payment': PaymentSerializer(payment).data
             }, status=status.HTTP_200_OK)
 
     except Payment.DoesNotExist:
         return Response({
-            'error': 'Payment nahi mili!'
+            'error': 'Payment record not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
 
@@ -158,11 +142,11 @@ def verify_payment(request):
 @permission_classes([IsAuthenticated])
 def payment_history(request):
     """
-    Patient apni payment history dekh sakta hai
+    Returns the complete payment history for the authenticated Patient.
     """
     if request.user.role != 'PATIENT':
         return Response({
-            'error': 'Sirf Patient payment history dekh sakta hai!'
+            'error': 'Only Patients can view payment history!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     payments = Payment.objects.filter(
@@ -183,7 +167,8 @@ def payment_history(request):
 @permission_classes([IsAuthenticated])
 def refund_payment(request, payment_id):
     """
-    Appointment cancel hone pe refund karo
+    Processes a refund for a successful payment.
+    Cancels the associated appointment and frees the slot.
     """
     try:
         payment = Payment.objects.get(
@@ -193,7 +178,7 @@ def refund_payment(request, payment_id):
         )
     except Payment.DoesNotExist:
         return Response({
-            'error': 'Payment nahi mili ya refund eligible nahi!'
+            'error': 'Payment not found or not eligible for refund!'
         }, status=status.HTTP_404_NOT_FOUND)
 
     try:
@@ -203,20 +188,17 @@ def refund_payment(request, payment_id):
             float(payment.amount)
         )
 
-        # Payment status update karo
         payment.status = 'REFUNDED'
         payment.save()
 
-        # Appointment cancel karo
         payment.appointment.status = 'CANCELLED'
         payment.appointment.save()
 
-        # Slot free karo
         payment.appointment.slot.is_booked = False
         payment.appointment.slot.save()
 
         return Response({
-            'message': 'Refund successful! Appointment cancel ho gayi.'
+            'message': 'Refund processed successfully! Appointment cancelled.'
         }, status=status.HTTP_200_OK)
 
     except Exception as e:

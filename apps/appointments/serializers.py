@@ -5,7 +5,8 @@ from apps.users.serializers import DoctorProfileSerializer, UserProfileSerialize
 
 class AvailabilitySlotSerializer(serializers.ModelSerializer):
     """
-    Doctor ke slots — create aur view dono ke liye
+    Serializes doctor availability slots for both creation and retrieval.
+    Validates that end time is after start time and date is not in the past.
     """
     doctor_name = serializers.CharField(
         source='doctor.user.full_name',
@@ -27,17 +28,15 @@ class AvailabilitySlotSerializer(serializers.ModelSerializer):
         read_only_fields = ['is_booked', 'created_at']
 
     def validate(self, attrs):
-        # End time, start time se baad honi chahiye
         if attrs['end_time'] <= attrs['start_time']:
             raise serializers.ValidationError({
-                'end_time': 'End time, start time se baad honi chahiye!'
+                'end_time': 'End time must be after start time!'
             })
 
-        # Past date pe slot nahi ban sakta
         from django.utils import timezone
         if attrs['date'] < timezone.now().date():
             raise serializers.ValidationError({
-                'date': 'Past date pe slot nahi ban sakta!'
+                'date': 'Cannot create a slot for a past date!'
             })
 
         return attrs
@@ -45,7 +44,8 @@ class AvailabilitySlotSerializer(serializers.ModelSerializer):
 
 class AppointmentSerializer(serializers.ModelSerializer):
     """
-    Appointment book karne ke liye
+    Serializes appointment data including nested slot and user details.
+    Automatically assigns the logged-in patient and derives doctor from slot.
     """
     patient_name = serializers.CharField(
         source='patient.full_name',
@@ -85,28 +85,22 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         slot = attrs.get('slot')
-
-        # Slot already booked hai?
         if slot and slot.is_booked:
             raise serializers.ValidationError({
-                'slot': 'Yeh slot already booked hai!'
+                'slot': 'This slot is already booked!'
             })
-
         return attrs
 
     def create(self, validated_data):
-        # Patient automatically current logged in user hoga
         request = self.context.get('request')
         validated_data['patient'] = request.user
 
-        # Doctor slot se automatically set hoga
         slot = validated_data.get('slot')
         validated_data['doctor'] = slot.doctor
 
-        # Appointment banao
         appointment = Appointment.objects.create(**validated_data)
 
-        # Slot ko booked mark karo
+        # Mark slot as booked
         slot.is_booked = True
         slot.save()
 

@@ -5,8 +5,8 @@ from .models import User, DoctorProfile
 
 class RegisterSerializer(serializers.ModelSerializer):
     """
-    Naya user register karne ke liye
-    Patient ya Doctor — dono register kar sakte hain
+    Handles new user registration for both Patient and Doctor roles.
+    Validates password confirmation and prevents Admin registration via API.
     """
     password = serializers.CharField(
         write_only=True,
@@ -31,28 +31,23 @@ class RegisterSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        # Dono passwords match karte hain?
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({
-                'password': 'Dono passwords alag hain!'
+                'password': 'Passwords do not match!'
             })
 
-        # Role valid hai?
         if attrs.get('role') == 'ADMIN':
             raise serializers.ValidationError({
-                'role': 'Admin account API se nahi ban sakta!'
+                'role': 'Admin accounts cannot be created via API!'
             })
 
         return attrs
 
     def create(self, validated_data):
-        # password2 ki zaroorat nahi ab
         validated_data.pop('password2')
-
-        # User banao
         user = User.objects.create_user(**validated_data)
 
-        # Agar Doctor hai toh automatically DoctorProfile bhi banao
+        # Automatically create DoctorProfile when a Doctor registers
         if user.role == 'DOCTOR':
             DoctorProfile.objects.create(user=user)
 
@@ -61,7 +56,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class LoginSerializer(serializers.Serializer):
     """
-    Email + Password leke JWT token deta hai
+    Validates email and password credentials for JWT login.
     """
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -69,7 +64,7 @@ class LoginSerializer(serializers.Serializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     """
-    User ka profile dikhane ke liye
+    Serializes user profile data for read operations.
     """
     full_name = serializers.ReadOnlyField()
 
@@ -91,7 +86,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     """
-    Doctor ka extended profile
+    Serializes doctor profile including nested user information.
     """
     user = UserProfileSerializer(read_only=True)
 

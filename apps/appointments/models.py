@@ -4,8 +4,8 @@ from apps.users.models import User, DoctorProfile
 
 class AvailabilitySlot(models.Model):
     """
-    Doctor ke available time slots
-    Doctor khud define karta hai kab available hai
+    Represents a time slot that a Doctor makes available for appointments.
+    Each slot is unique per doctor, date, and start time.
     """
     doctor = models.ForeignKey(
         DoctorProfile,
@@ -20,7 +20,7 @@ class AvailabilitySlot(models.Model):
 
     class Meta:
         db_table = 'availability_slots'
-        # Ek doctor ek din ek time pe sirf ek slot de sakta hai
+        # Prevents a doctor from creating duplicate slots
         unique_together = ['doctor', 'date', 'start_time']
         ordering = ['date', 'start_time']
 
@@ -30,7 +30,9 @@ class AvailabilitySlot(models.Model):
 
 class Appointment(models.Model):
     """
-    Patient ka booked appointment
+    Represents a confirmed booking between a Patient and a Doctor.
+    Links to a specific AvailabilitySlot using OneToOneField
+    to prevent double booking at the database level.
     """
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
@@ -49,6 +51,7 @@ class Appointment(models.Model):
         on_delete=models.CASCADE,
         related_name='appointments'
     )
+    # OneToOneField ensures only one appointment per slot — database level constraint
     slot = models.OneToOneField(
         AvailabilitySlot,
         on_delete=models.CASCADE,

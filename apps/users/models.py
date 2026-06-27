@@ -4,11 +4,11 @@ from django.db import models
 
 class UserManager(BaseUserManager):
     """
-    Custom manager — email se user create karta hai, username se nahi
+    Custom manager — uses email instead of username for authentication
     """
     def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError('Email zaroori hai!')
+            raise ValueError('Email is required!')
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -24,7 +24,8 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     """
-    Custom User Model — Teen roles: PATIENT, DOCTOR, ADMIN
+    Custom User Model with three roles: PATIENT, DOCTOR, ADMIN
+    Uses email as the primary identifier instead of username
     """
 
     ROLE_CHOICES = [
@@ -33,29 +34,25 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('ADMIN', 'Admin'),
     ]
 
-    # Basic Fields
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     phone = models.CharField(max_length=15, blank=True, null=True)
 
-    # Role Field — sabse important!
+    # Determines access level and available features
     role = models.CharField(
         max_length=10,
         choices=ROLE_CHOICES,
         default='PATIENT'
     )
 
-    # Account Status
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
 
-    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Email se login hoga, username se nahi
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']
 
@@ -76,7 +73,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class DoctorProfile(models.Model):
     """
-    Doctor ka extra profile — sirf DOCTOR role wale users ka hoga
+    Extended profile for users with DOCTOR role
+    Contains medical specialization and availability info
     """
     user = models.OneToOneField(
         User,
@@ -93,10 +91,7 @@ class DoctorProfile(models.Model):
     rating = models.FloatField(default=0.0)
     location = models.CharField(max_length=200, blank=True)
     bio = models.TextField(blank=True)
-
-    # Availability
     is_available = models.BooleanField(default=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

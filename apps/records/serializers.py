@@ -1,11 +1,11 @@
 from rest_framework import serializers
 from .models import MedicalRecord
-from apps.users.serializers import UserProfileSerializer
 
 
 class MedicalRecordSerializer(serializers.ModelSerializer):
     """
-    Medical record create aur view karne ke liye
+    Serializes full medical record details for retrieval.
+    Includes patient and doctor names as read-only fields.
     """
     patient_name = serializers.CharField(
         source='patient.full_name',
@@ -33,16 +33,12 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
-        read_only_fields = [
-            'patient',
-            'created_at',
-            'updated_at'
-        ]
+        read_only_fields = ['patient', 'created_at', 'updated_at']
 
 
 class MedicalRecordCreateSerializer(serializers.ModelSerializer):
     """
-    Patient record upload karne ke liye
+    Used when a Patient uploads a new medical record.
     """
     class Meta:
         model = MedicalRecord
@@ -57,7 +53,7 @@ class MedicalRecordCreateSerializer(serializers.ModelSerializer):
 
 class DoctorNotesSerializer(serializers.ModelSerializer):
     """
-    Doctor apne notes add kar sakta hai
+    Used when a Doctor adds clinical notes to an existing record.
     """
     class Meta:
         model = MedicalRecord

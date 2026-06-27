@@ -9,10 +9,12 @@ from .serializers import AvailabilitySlotSerializer, AppointmentSerializer
 
 
 def is_doctor(user):
+    """Returns True if the user has the DOCTOR role."""
     return user.role == 'DOCTOR'
 
 
 def is_patient(user):
+    """Returns True if the user has the PATIENT role."""
     return user.role == 'PATIENT'
 
 
@@ -22,29 +24,27 @@ def is_patient(user):
 @permission_classes([IsAuthenticated])
 def create_slot(request):
     """
-    Doctor apna available slot create karta hai
-    Sirf DOCTOR role wala user kar sakta hai
+    Allows a Doctor to create an availability slot.
+    Only users with the DOCTOR role can access this endpoint.
     """
     if not is_doctor(request.user):
         return Response({
-            'error': 'Sirf Doctor slot create kar sakta hai!'
+            'error': 'Only Doctors can create slots!'
         }, status=status.HTTP_403_FORBIDDEN)
 
-    # Doctor ka profile lo
     try:
         doctor_profile = request.user.doctor_profile
     except Exception:
         return Response({
-            'error': 'Doctor profile nahi mila!'
+            'error': 'Doctor profile not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
     serializer = AvailabilitySlotSerializer(data=request.data)
 
     if serializer.is_valid():
-        # Automatically doctor set hoga
         serializer.save(doctor=doctor_profile)
         return Response({
-            'message': 'Slot successfully create ho gaya!',
+            'message': 'Slot created successfully!',
             'slot': serializer.data
         }, status=status.HTTP_201_CREATED)
 
@@ -55,23 +55,22 @@ def create_slot(request):
 @permission_classes([IsAuthenticated])
 def my_slots(request):
     """
-    Doctor apne saare slots dekh sakta hai
+    Returns all slots created by the authenticated Doctor.
+    Supports filtering by date and booking status.
     """
     if not is_doctor(request.user):
         return Response({
-            'error': 'Sirf Doctor apne slots dekh sakta hai!'
+            'error': 'Only Doctors can view their slots!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     slots = AvailabilitySlot.objects.filter(
         doctor=request.user.doctor_profile
     )
 
-    # Filter by date
     date = request.query_params.get('date')
     if date:
         slots = slots.filter(date=date)
 
-    # Filter by booked status
     is_booked = request.query_params.get('is_booked')
     if is_booked is not None:
         slots = slots.filter(is_booked=is_booked.lower() == 'true')
@@ -87,18 +86,18 @@ def my_slots(request):
 @permission_classes([IsAuthenticated])
 def doctor_appointments(request):
     """
-    Doctor apne saare appointments dekh sakta hai
+    Returns all appointments for the authenticated Doctor.
+    Supports filtering by appointment status.
     """
     if not is_doctor(request.user):
         return Response({
-            'error': 'Sirf Doctor apne appointments dekh sakta hai!'
+            'error': 'Only Doctors can view their appointments!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     appointments = Appointment.objects.filter(
         doctor=request.user.doctor_profile
     ).select_related('patient', 'slot')
 
-    # Filter by status
     appt_status = request.query_params.get('status')
     if appt_status:
         appointments = appointments.filter(status=appt_status.upper())
@@ -116,15 +115,14 @@ def doctor_appointments(request):
 @permission_classes([IsAuthenticated])
 def available_slots(request):
     """
-    Patient kisi bhi doctor ke available slots dekh sakta hai
-    ?doctor_id=1 se filter kar sakte hain
+    Returns all available (unbooked) future slots.
+    Supports filtering by doctor ID.
     """
     slots = AvailabilitySlot.objects.filter(
         is_booked=False,
-        date__gte=timezone.now().date()  # Sirf future slots
+        date__gte=timezone.now().date()
     ).select_related('doctor__user')
 
-    # Filter by doctor
     doctor_id = request.query_params.get('doctor_id')
     if doctor_id:
         slots = slots.filter(doctor__id=doctor_id)
@@ -140,33 +138,31 @@ def available_slots(request):
 @permission_classes([IsAuthenticated])
 def book_appointment(request):
     """
-    Patient appointment book karta hai
-    select_for_update() se race condition prevent hoti hai
+    Allows a Patient to book an available slot.
+    Uses select_for_update() inside a transaction to prevent race conditions.
     """
     if not is_patient(request.user):
         return Response({
-            'error': 'Sirf Patient appointment book kar sakta hai!'
+            'error': 'Only Patients can book appointments!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     slot_id = request.data.get('slot')
 
     if not slot_id:
         return Response({
-            'error': 'Slot ID required hai!'
+            'error': 'Slot ID is required!'
         }, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():
-            # select_for_update — slot ko lock karo
-            # Koi doosra request isko tab tak access nahi kar sakta
+            # Lock the slot to prevent concurrent bookings
             slot = AvailabilitySlot.objects.select_for_update().get(
                 id=slot_id
             )
 
-            # Lock milne ke baad check karo
             if slot.is_booked:
                 return Response({
-                    'error': 'Yeh slot already booked hai!'
+                    'error': 'This slot is already booked!'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             serializer = AppointmentSerializer(
@@ -177,7 +173,7 @@ def book_appointment(request):
             if serializer.is_valid():
                 appointment = serializer.save()
                 return Response({
-                    'message': 'Appointment successfully book ho gayi!',
+                    'message': 'Appointment booked successfully!',
                     'appointment': AppointmentSerializer(
                         appointment,
                         context={'request': request}
@@ -191,18 +187,19 @@ def book_appointment(request):
 
     except AvailabilitySlot.DoesNotExist:
         return Response({
-            'error': 'Slot nahi mila!'
+            'error': 'Slot not found!'
         }, status=status.HTTP_404_NOT_FOUND)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_appointments(request):
     """
-    Patient apne saare appointments dekh sakta hai
+    Returns all appointments for the authenticated Patient.
     """
     if not is_patient(request.user):
         return Response({
-            'error': 'Sirf Patient apne appointments dekh sakta hai!'
+            'error': 'Only Patients can view their appointments!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     appointments = Appointment.objects.filter(
@@ -220,7 +217,8 @@ def my_appointments(request):
 @permission_classes([IsAuthenticated])
 def cancel_appointment(request, appointment_id):
     """
-    Patient ya Doctor — dono appointment cancel kar sakte hain
+    Allows a Patient or Doctor to cancel an appointment.
+    Frees up the associated slot upon cancellation.
     """
     try:
         if is_patient(request.user):
@@ -235,23 +233,21 @@ def cancel_appointment(request, appointment_id):
             )
     except Appointment.DoesNotExist:
         return Response({
-            'error': 'Appointment nahi mili!'
+            'error': 'Appointment not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # Already cancelled ya completed?
     if appointment.status in ['CANCELLED', 'COMPLETED']:
         return Response({
-            'error': f'Appointment already {appointment.status} hai!'
+            'error': f'Appointment is already {appointment.status}!'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # Cancel karo aur slot free karo
+    # Cancel appointment and free the slot
     appointment.status = 'CANCELLED'
     appointment.save()
 
-    # Slot wapas available karo
     appointment.slot.is_booked = False
     appointment.slot.save()
 
     return Response({
-        'message': 'Appointment cancel ho gayi! Slot wapas available hai.'
+        'message': 'Appointment cancelled successfully! Slot is now available.'
     }, status=status.HTTP_200_OK)

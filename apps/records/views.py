@@ -14,12 +14,12 @@ from .serializers import (
 @permission_classes([IsAuthenticated])
 def upload_record(request):
     """
-    Patient apna medical record upload karta hai
-    Prescription, Lab Report, X-Ray etc.
+    Allows a Patient to upload a new medical record.
+    Supports file attachments for prescriptions, reports, and scans.
     """
     if request.user.role != 'PATIENT':
         return Response({
-            'error': 'Sirf Patient record upload kar sakta hai!'
+            'error': 'Only Patients can upload medical records!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     serializer = MedicalRecordCreateSerializer(data=request.data)
@@ -27,38 +27,32 @@ def upload_record(request):
     if serializer.is_valid():
         record = serializer.save(patient=request.user)
         return Response({
-            'message': 'Medical record successfully upload ho gaya!',
+            'message': 'Medical record uploaded successfully!',
             'record': MedicalRecordSerializer(record).data
         }, status=status.HTTP_201_CREATED)
 
-    return Response(
-        serializer.errors,
-        status=status.HTTP_400_BAD_REQUEST
-    )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_records(request):
     """
-    Patient apne saare medical records dekh sakta hai
-    Filter by record_type bhi kar sakte hain
+    Returns all medical records belonging to the authenticated Patient.
+    Supports filtering by record type via query parameter.
     """
     if request.user.role != 'PATIENT':
         return Response({
-            'error': 'Sirf Patient apne records dekh sakta hai!'
+            'error': 'Only Patients can view their records!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     records = MedicalRecord.objects.filter(
         patient=request.user
     ).select_related('doctor', 'appointment')
 
-    # Filter by record type
     record_type = request.query_params.get('type')
     if record_type:
-        records = records.filter(
-            record_type=record_type.upper()
-        )
+        records = records.filter(record_type=record_type.upper())
 
     serializer = MedicalRecordSerializer(records, many=True)
     return Response({
@@ -71,12 +65,12 @@ def my_records(request):
 @permission_classes([IsAuthenticated])
 def patient_records(request, patient_id):
     """
-    Doctor kisi patient ke records dekh sakta hai
-    Sirf woh doctor dekh sakta hai jisne us patient ko treat kiya ho
+    Allows a Doctor to view a specific patient's medical records.
+    Restricted to users with the DOCTOR role.
     """
     if request.user.role != 'DOCTOR':
         return Response({
-            'error': 'Sirf Doctor patient records dekh sakta hai!'
+            'error': 'Only Doctors can view patient records!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     records = MedicalRecord.objects.filter(
@@ -94,18 +88,18 @@ def patient_records(request, patient_id):
 @permission_classes([IsAuthenticated])
 def add_doctor_notes(request, record_id):
     """
-    Doctor medical record mein notes add karta hai
+    Allows a Doctor to add clinical notes to a medical record.
     """
     if request.user.role != 'DOCTOR':
         return Response({
-            'error': 'Sirf Doctor notes add kar sakta hai!'
+            'error': 'Only Doctors can add notes to records!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     try:
         record = MedicalRecord.objects.get(id=record_id)
     except MedicalRecord.DoesNotExist:
         return Response({
-            'error': 'Record nahi mila!'
+            'error': 'Medical record not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
     serializer = DoctorNotesSerializer(
@@ -117,25 +111,22 @@ def add_doctor_notes(request, record_id):
     if serializer.is_valid():
         serializer.save(doctor=request.user)
         return Response({
-            'message': 'Doctor notes successfully add ho gaye!',
+            'message': 'Doctor notes added successfully!',
             'record': MedicalRecordSerializer(record).data
         }, status=status.HTTP_200_OK)
 
-    return Response(
-        serializer.errors,
-        status=status.HTTP_400_BAD_REQUEST
-    )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_record(request, record_id):
     """
-    Patient apna record delete kar sakta hai
+    Allows a Patient to permanently delete one of their medical records.
     """
     if request.user.role != 'PATIENT':
         return Response({
-            'error': 'Sirf Patient apna record delete kar sakta hai!'
+            'error': 'Only Patients can delete their records!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     try:
@@ -145,10 +136,10 @@ def delete_record(request, record_id):
         )
     except MedicalRecord.DoesNotExist:
         return Response({
-            'error': 'Record nahi mila!'
+            'error': 'Medical record not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
     record.delete()
     return Response({
-        'message': 'Record successfully delete ho gaya!'
+        'message': 'Medical record deleted successfully!'
     }, status=status.HTTP_200_OK)

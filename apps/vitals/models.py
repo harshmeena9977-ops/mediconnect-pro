@@ -4,8 +4,9 @@ from apps.users.models import User
 
 class HealthVital(models.Model):
     """
-    IoT device se aaya health data
-    BP machine, glucose meter, smartwatch — sab ka data yahan store hoga
+    Stores health readings received from IoT devices such as
+    smartwatches, BP machines, and glucose meters.
+    Automatically triggers alerts when readings exceed safe thresholds.
     """
     patient = models.ForeignKey(
         User,
@@ -14,14 +15,12 @@ class HealthVital(models.Model):
     )
     device_id = models.CharField(max_length=100)
 
-    # Health Readings
-    blood_pressure_sys = models.IntegerField(null=True, blank=True)  # Systolic
-    blood_pressure_dia = models.IntegerField(null=True, blank=True)  # Diastolic
+    blood_pressure_sys = models.IntegerField(null=True, blank=True)
+    blood_pressure_dia = models.IntegerField(null=True, blank=True)
     heart_rate = models.IntegerField(null=True, blank=True)
     glucose_level = models.FloatField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
 
-    # Alert System
     alert_triggered = models.BooleanField(default=False)
     alert_message = models.TextField(blank=True)
 
@@ -36,27 +35,31 @@ class HealthVital(models.Model):
 
     def check_alerts(self):
         """
-        Dangerous readings pe alert trigger karo
+        Checks all vital readings against safe thresholds.
+        Sets alert_triggered to True if any reading is abnormal.
+        Returns a list of alert messages.
         """
         alerts = []
 
-        # BP check
         if self.blood_pressure_sys and self.blood_pressure_sys > 140:
-            alerts.append(f"High BP alert: {self.blood_pressure_sys}/{self.blood_pressure_dia}")
+            alerts.append(
+                f"High blood pressure detected: {self.blood_pressure_sys}/{self.blood_pressure_dia} mmHg"
+            )
 
-        # Heart rate check
         if self.heart_rate:
             if self.heart_rate > 100:
-                alerts.append(f"High heart rate: {self.heart_rate} bpm")
+                alerts.append(f"Elevated heart rate: {self.heart_rate} bpm")
             elif self.heart_rate < 60:
                 alerts.append(f"Low heart rate: {self.heart_rate} bpm")
 
-        # Glucose check
         if self.glucose_level and self.glucose_level > 140:
-            alerts.append(f"High glucose: {self.glucose_level} mg/dL")
+            alerts.append(f"High glucose level: {self.glucose_level} mg/dL")
+
+        if self.temperature and self.temperature > 99.5:
+            alerts.append(f"Fever detected: {self.temperature}°F")
 
         if alerts:
             self.alert_triggered = True
             self.alert_message = " | ".join(alerts)
-        
+
         return alerts

@@ -4,16 +4,15 @@ from .models import Payment
 
 class PaymentCreateSerializer(serializers.Serializer):
     """
-    Payment order banane ke liye
-    Sirf appointment_id chahiye
+    Accepts an appointment ID to initiate a payment order.
     """
     appointment_id = serializers.IntegerField()
 
 
 class PaymentVerifySerializer(serializers.Serializer):
     """
-    Payment verify karne ke liye
-    Razorpay se yeh teen cheezein aati hain
+    Accepts the three values returned by Razorpay after payment.
+    Used to verify payment authenticity before confirming the appointment.
     """
     razorpay_order_id = serializers.CharField()
     razorpay_payment_id = serializers.CharField()
@@ -22,7 +21,7 @@ class PaymentVerifySerializer(serializers.Serializer):
 
 class PaymentSerializer(serializers.ModelSerializer):
     """
-    Payment details dikhane ke liye
+    Serializes payment details for history and confirmation responses.
     """
     patient_name = serializers.CharField(
         source='patient.full_name',

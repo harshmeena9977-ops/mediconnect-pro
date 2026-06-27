@@ -17,19 +17,18 @@ from .serializers import (
 @permission_classes([AllowAny])
 def register_view(request):
     """
-    Naya user register karo
-    Patient ya Doctor ban sakte hain
+    Registers a new user as either a Patient or Doctor.
+    Returns JWT tokens on successful registration.
     """
     serializer = RegisterSerializer(data=request.data)
 
     if serializer.is_valid():
         user = serializer.save()
 
-        # JWT token generate karo registered user ke liye
         refresh = RefreshToken.for_user(user)
 
         return Response({
-            'message': f'Welcome {user.full_name}! Account successfully bana!',
+            'message': f'Welcome {user.full_name}! Account created successfully!',
             'user': UserProfileSerializer(user).data,
             'tokens': {
                 'access': str(refresh.access_token),
@@ -44,8 +43,8 @@ def register_view(request):
 @permission_classes([AllowAny])
 def login_view(request):
     """
-    Email + Password se login karo
-    JWT access + refresh token milega
+    Authenticates user with email and password.
+    Returns JWT access and refresh tokens on success.
     """
     serializer = LoginSerializer(data=request.data)
 
@@ -53,20 +52,18 @@ def login_view(request):
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
 
-        # User authenticate karo
         user = authenticate(request, username=email, password=password)
 
         if user is None:
             return Response({
-                'error': 'Email ya Password galat hai!'
+                'error': 'Invalid email or password!'
             }, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_active:
             return Response({
-                'error': 'Account inactive hai. Support se contact karo.'
+                'error': 'Account is inactive. Please contact support.'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # JWT tokens generate karo
         refresh = RefreshToken.for_user(user)
 
         return Response({
@@ -85,7 +82,7 @@ def login_view(request):
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     """
-    Refresh token blacklist karo — logout
+    Blacklists the refresh token to invalidate the user session.
     """
     try:
         refresh_token = request.data.get('refresh')
@@ -93,7 +90,7 @@ def logout_view(request):
         token.blacklist()
 
         return Response({
-            'message': 'Successfully logout ho gaye!'
+            'message': 'Successfully logged out!'
         }, status=status.HTTP_200_OK)
 
     except Exception:
@@ -106,7 +103,7 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     """
-    Apna profile dekho — sirf logged in user
+    Returns the authenticated user's profile data.
     """
     serializer = UserProfileSerializer(request.user)
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -116,19 +113,17 @@ def profile_view(request):
 @permission_classes([IsAuthenticated])
 def doctors_list_view(request):
     """
-    Saare available doctors ki list
-    Filter by: specialty, location
+    Returns a list of all available doctors.
+    Supports filtering by specialty and location via query parameters.
     """
     doctors = DoctorProfile.objects.filter(
         is_available=True
     ).select_related('user')
 
-    # Filter by specialty
     specialty = request.query_params.get('specialty')
     if specialty:
         doctors = doctors.filter(specialty__icontains=specialty)
 
-    # Filter by location
     location = request.query_params.get('location')
     if location:
         doctors = doctors.filter(location__icontains=location)
@@ -139,26 +134,26 @@ def doctors_list_view(request):
         'doctors': serializer.data
     }, status=status.HTTP_200_OK)
 
+
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_doctor_profile(request):
     """
-    Doctor apna profile update karta hai
-    specialty, fee, location, bio set karta hai
+    Allows a Doctor to update their profile information.
+    Supports both full (PUT) and partial (PATCH) updates.
     """
     if request.user.role != 'DOCTOR':
         return Response({
-            'error': 'Sirf Doctor apna profile update kar sakta hai!'
+            'error': 'Only Doctors can update their profile!'
         }, status=status.HTTP_403_FORBIDDEN)
 
     try:
         doctor_profile = request.user.doctor_profile
-    except Exception:
+    except DoctorProfile.DoesNotExist:
         return Response({
-            'error': 'Doctor profile nahi mila!'
+            'error': 'Doctor profile not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # PATCH = sirf kuch fields update, PUT = sab fields
     serializer = DoctorProfileSerializer(
         doctor_profile,
         data=request.data,
@@ -168,7 +163,7 @@ def update_doctor_profile(request):
     if serializer.is_valid():
         serializer.save()
         return Response({
-            'message': 'Profile successfully update ho gaya!',
+            'message': 'Profile updated successfully!',
             'profile': serializer.data
         }, status=status.HTTP_200_OK)
 
@@ -179,8 +174,7 @@ def update_doctor_profile(request):
 @permission_classes([IsAuthenticated])
 def doctor_detail(request, doctor_id):
     """
-    Kisi bhi doctor ki detail dekho
-    Patient use karta hai doctor ka full profile dekhne ke liye
+    Returns the full profile of a specific doctor by ID.
     """
     try:
         doctor = DoctorProfile.objects.select_related('user').get(
@@ -188,7 +182,7 @@ def doctor_detail(request, doctor_id):
         )
     except DoctorProfile.DoesNotExist:
         return Response({
-            'error': 'Doctor nahi mila!'
+            'error': 'Doctor not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
     serializer = DoctorProfileSerializer(doctor)
