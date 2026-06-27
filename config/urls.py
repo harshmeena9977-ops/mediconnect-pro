@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/v1/auth/', include('apps.users.urls')),
     path('api/v1/appointments/', include('apps.appointments.urls')),  # ← Yeh add karo
     path('api/v1/vitals/', include('apps.vitals.urls')),
+    path('api/v1/payments/', include('apps.payments.urls')),
 
     # API Documentation — Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
