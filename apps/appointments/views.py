@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.utils import timezone
+from django.db import transaction
 from .models import AvailabilitySlot, Appointment
 from .serializers import AvailabilitySlotSerializer, AppointmentSerializer
 
@@ -140,30 +141,58 @@ def available_slots(request):
 def book_appointment(request):
     """
     Patient appointment book karta hai
-    Sirf PATIENT role wala user kar sakta hai
+    select_for_update() se race condition prevent hoti hai
     """
     if not is_patient(request.user):
         return Response({
             'error': 'Sirf Patient appointment book kar sakta hai!'
         }, status=status.HTTP_403_FORBIDDEN)
 
-    serializer = AppointmentSerializer(
-        data=request.data,
-        context={'request': request}
-    )
+    slot_id = request.data.get('slot')
 
-    if serializer.is_valid():
-        appointment = serializer.save()
+    if not slot_id:
         return Response({
-            'message': 'Appointment successfully book ho gayi!',
-            'appointment': AppointmentSerializer(
-                appointment,
+            'error': 'Slot ID required hai!'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
+            # select_for_update — slot ko lock karo
+            # Koi doosra request isko tab tak access nahi kar sakta
+            slot = AvailabilitySlot.objects.select_for_update().get(
+                id=slot_id
+            )
+
+            # Lock milne ke baad check karo
+            if slot.is_booked:
+                return Response({
+                    'error': 'Yeh slot already booked hai!'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = AppointmentSerializer(
+                data=request.data,
                 context={'request': request}
-            ).data
-        }, status=status.HTTP_201_CREATED)
+            )
 
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            if serializer.is_valid():
+                appointment = serializer.save()
+                return Response({
+                    'message': 'Appointment successfully book ho gayi!',
+                    'appointment': AppointmentSerializer(
+                        appointment,
+                        context={'request': request}
+                    ).data
+                }, status=status.HTTP_201_CREATED)
 
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    except AvailabilitySlot.DoesNotExist:
+        return Response({
+            'error': 'Slot nahi mila!'
+        }, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
